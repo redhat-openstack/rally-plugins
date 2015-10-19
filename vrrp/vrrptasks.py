@@ -1,13 +1,13 @@
 import netaddr
 
+from rally import consts
+from rally import exceptions
 from rally.common import log as logging
 from rally.common import sshutils
-from rally import consts
 from rally.plugins.openstack import scenario
 from rally.plugins.openstack.scenarios.vm import utils as vmutils
-from rally import exceptions
-from rally.task import types
 from rally.task import atomic
+from rally.task import types
 from rally.task import utils
 from rally.task import validation
 
@@ -45,24 +45,22 @@ class VRRPScenario(vmutils.VMScenario):
                                                           masters[0]["host"])))
         return masters[0]
 
-    def failover(self, host, command):
-        """
+    def failover(self, host, command, port=22, username="", password="",
+                 key_filename=None, pkey=None):
+        """Trigger failover at host
 
         :param host:
         :param command:
         :return:
         """
-        LOG.info("Host: %s. Injecting Failover %s" % (host["address"],
+        LOG.info("Host: %s. Injecting Failover %s" % (host,
                                                       command))
-        code, out, err = self._run_command(
-            server_ip=host.get("address"),
-            port=host.get("port", 22),
-            username=host.get("username"),
-            password=host.get("password"),
-            key_filename=host.get("key_filename"),
-            pkey=host.get("pkey"),
-            command=command
-        )
+        code, out, err = self._run_command(server_ip=host, port=port,
+                                           username=username,
+                                           password=password,
+                                           key_filename=key_filename,
+                                           pkey=pkey, command=command
+                                           )
         if code and code > 0:
             raise exceptions.ScriptError(
                 "Error running command %(command)s. "
@@ -183,24 +181,19 @@ class VRRPScenario(vmutils.VMScenario):
             Examples::
 
                 l3_nodes: {
-                  net1: {
-                    address: 10.35.186.187
-                    username: root
-                    password: 123456,
-                    port: 21
+                  username: cloud-user
+                  key_filename: /path/to/ssh/id_rsa.pub
+                  nodes: {
+                    net1: 10.35.186.187
+                    net2: net2.example.com
                   },
-                  net2: {
-                    address: net2.example.com
-                    username: root
-                    pkey: /path/to/ssh/id_rsa.pub
-                  }
                 }
         :param command: dict. Command that will be used to trigger failover
             will be executed via ssh on the node hosting the l3-agent. For more
             details see: VMTask.boot_runcommand_delete.command
 
         Note: failure injection usually requires root acess to the nodes,
-            eithre via root user or by disabling 'Defaults requiretty' in
+            either via root user or by disabling 'Defaults requiretty' in
             /etc/sudoers
         """
         server, fip = self._boot_server_with_fip(
@@ -217,8 +210,14 @@ class VRRPScenario(vmutils.VMScenario):
         with atomic.ActionTimer(self, "VRRP.wait_for_ping.init_server"):
             self._wait_for_ping(fip["ip"])
 
-        self.failover(host=l3_nodes[master["host"]],
-                      command=command)
+        self.failover(host=l3_nodes["nodes"][master["host"]],
+                      command=command,
+                      port=l3_nodes.get("port", 22),
+                      username=l3_nodes.get("username"),
+                      password=l3_nodes.get("password"),
+                        key_filename=l3_nodes.get("key_filename"),
+                      pkey=l3_nodes.get("pkey")
+                      )
         with atomic.ActionTimer(self, "VRRP.wait_for_ping.after_failover"):
             self._wait_for_ping(fip["ip"])
         with atomic.ActionTimer(self, "VRRP.get_master_agent.after_failover"):
