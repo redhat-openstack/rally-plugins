@@ -187,20 +187,22 @@ class VRRPScenario(vmutils.VMScenario):
         :param poll_duration: int. 0 will use defaults from conf
         :param poll_interval: int. 0 will use defaults from conf
         :param l3_nodes: dictionary with credentials to the different l3-nodes
-            where the keys are the agent host-names from the Neutron DB
+            and a list of l3-nodes dicts containg host name (shouuld matche
+            the agent "host" value), and address for ssh. If "address" is
+            missing, will use "host" as default.
 
             Examples::
 
                 l3_nodes: {
                   username: cloud-user
                   key_filename: /path/to/ssh/id_rsa.pub
-                  nodes: {
-                    net1: 10.35.186.187
-                    net2: net2.example.com
-                  },
+                  nodes: [
+                    {host: 10.35.186.187},
+                    {host: net2, address: net2.example.com}
+                  ],
                 }
-        :param command: dict. Command that will be used to trigger failover
-            will be executed via ssh on the node hosting the l3-agent. For more
+        :param command: dict. Command that will be used to trigger failover.
+            Will be executed via ssh on the node hosting the l3-agent. For more
             details see: VMTask.boot_runcommand_delete.command
 
         Note: failure injection usually requires root acess to the nodes,
@@ -221,7 +223,9 @@ class VRRPScenario(vmutils.VMScenario):
         with atomic.ActionTimer(self, "VRRP.wait_for_ping.init_server"):
             self._wait_for_ping(fip["ip"])
 
-        self.failover(host=l3_nodes["nodes"][master["host"]],
+        node_address = [n.get("address", n["host"]) for n in l3_nodes["nodes"]
+                        if n["host"] == master["host"]].pop()
+        self.failover(host=node_address,
                       command=command,
                       port=l3_nodes.get("port", 22),
                       username=l3_nodes.get("username"),
