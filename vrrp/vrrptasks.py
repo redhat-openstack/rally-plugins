@@ -89,6 +89,30 @@ class VRRPScenario(vmutils.VMScenario):
 
         return routers[0]
 
+    def wait_for_master_update(self, router_id, old_master):
+        """Wait for the master node to update post failover
+
+        There's a delay between the actual failover and update of the master
+        node in the server DB.
+        """
+        CHANGED = "MIGRATED"
+        UNCHANGED = "STUCK"
+        get_master = self.get_master_agent
+
+        class RouterMigrated(object):
+
+            def __call__(self, _resource):
+                master = get_master(router_id)
+                return (CHANGED if master["id"] != old_master["id"]
+                        else UNCHANGED)
+
+        utils.wait_for(
+            "Router %s" % router_id,
+            is_ready=RouterMigrated(),
+            timeout=vmutils.CONF.benchmark.vm_ping_timeout,
+            check_interval=vmutils.CONF.benchmark.vm_ping_poll_interval
+        )
+
     def _wait_for_ping(self, server_ip):
         """Ping the server repeatedly.
 
@@ -108,19 +132,6 @@ class VRRPScenario(vmutils.VMScenario):
             timeout=vmutils.CONF.benchmark.vm_ping_timeout,
             check_interval=vmutils.CONF.benchmark.vm_ping_poll_interval
         )
-
-
-        # duration = duration or vmutils.CONF.benchmark.vm_ping_timeout,
-        # interval = interval or vmutils.CONF.benchmark.vm_ping_poll_interval
-        # server_ip = netaddr.IPAddress(server_ip)
-        #
-        # utils.wait_for(
-        #     server_ip,
-        #     is_ready=utils.resource_is(vmutils.ICMP_UP_STATUS,
-        #                                self._ping_ip_address),
-        #     timeout=duration,
-        #     check_interval=interval
-        # )
 
     def _run_command(self, server_ip, port, username, password, command,
                      pkey=None, key_filename=None):
@@ -215,13 +226,11 @@ class VRRPScenario(vmutils.VMScenario):
                       port=l3_nodes.get("port", 22),
                       username=l3_nodes.get("username"),
                       password=l3_nodes.get("password"),
-                        key_filename=l3_nodes.get("key_filename"),
+                      key_filename=l3_nodes.get("key_filename"),
                       pkey=l3_nodes.get("pkey")
                       )
         with atomic.ActionTimer(self, "VRRP.wait_for_ping.after_failover"):
             self._wait_for_ping(fip["ip"])
-        with atomic.ActionTimer(self, "VRRP.get_master_agent.after_failover"):
-            master_new = self.get_master_agent(router_id)
 
-        msg = "router remains ACTIVE on the same node"
-        assert master_new["id"] != master["id"], msg
+        with atomic.ActionTimer(self, "VRRP.verify_router_migration"):
+            self.wait_for_master_update(router_id, master)
