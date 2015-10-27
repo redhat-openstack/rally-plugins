@@ -1,4 +1,5 @@
 import netaddr
+from os import path
 
 from rally import consts
 from rally import exceptions
@@ -53,6 +54,8 @@ class VRRPScenario(vmutils.VMScenario):
         :param command:
         :return:
         """
+        if key_filename:
+            key_filename = path.expanduser(key_filename)
         LOG.info("Host: %s. Injecting Failover %s" % (host,
                                                       command))
         code, out, err = self._run_command(server_ip=host, port=port,
