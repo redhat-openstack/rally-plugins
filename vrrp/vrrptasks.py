@@ -127,11 +127,11 @@ class VRRPScenario(vmutils.VMScenario):
         :param interval: time between iterations
         """
 
-        server_ip = netaddr.IPAddress(server_ip)
-        utils.wait_for(
-            server_ip,
-            is_ready=utils.resource_is(vmutils.ICMP_UP_STATUS,
-                                       self._ping_ip_address),
+        server = vmutils.Host(server_ip)
+        utils.wait_for_status(
+            server,
+            ready_statuses=[vmutils.Host.ICMP_UP_STATUS],
+            update_resource=vmutils.Host.update_status,
             timeout=vmutils.CONF.benchmark.vm_ping_timeout,
             check_interval=vmutils.CONF.benchmark.vm_ping_poll_interval
         )
